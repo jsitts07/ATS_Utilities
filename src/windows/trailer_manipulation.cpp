@@ -9,6 +9,7 @@
 #include "prism/game_actor.hpp"
 #include "prism/physics/physics_actor_t.hpp"
 #include "prism/vehicles/accessories/data/accessory_chassis_data.hpp"
+#include "memory/robust_pattern_scanner.hpp"
 
 namespace ts_extra_utilities
 {
@@ -80,18 +81,27 @@ namespace ts_extra_utilities
 
     bool CTrailerManipulation::init()
     {
-        this->set_individual_steering_fn_ = memory::get_function_from_pattern< prism::set_individual_steering_fn >( "48 89 5c 24 08 48 89 74 24 10 57 48 83 ec ? 8b 41 ? 48 8b d9 0f 29 74", 0 );
+        // Use robust pattern scanner for set_individual_steering function
+        const auto steering_addr = pattern_scanner::RobustPatternScanner::find_with_fallbacks(
+            "set_individual_steering",
+            pattern_scanner::patterns::SET_INDIVIDUAL_STEERING_PATTERNS
+        );
 
-        if ( this->set_individual_steering_fn_ == nullptr )
+        if (steering_addr != 0)
         {
-            CCore::g_instance->error( "Could not find 'set_individual_steering' function" );
+            this->set_individual_steering_fn_ = reinterpret_cast<prism::set_individual_steering_fn*>(steering_addr);
+            CCore::g_instance->debug( "Found set_individual_steering function @ +{:x}", memory::as_offset(steering_addr) );
         }
         else
         {
-            CCore::g_instance->debug( "Found set_individual_steering function @ +{:x}", memory::as_offset( reinterpret_cast< uint64_t >( this->set_individual_steering_fn_ ) ) );
+            CCore::g_instance->error( "Could not find 'set_individual_steering' function" );
         }
 
-        const auto crash_fn_address = memory::get_address_for_pattern( "48 85 d2 0f 84 ? ? ? ? 48 89 74 24 18 57 48 83 ec 40" );
+        // Use robust pattern scanner for crash function
+        const auto crash_fn_address = pattern_scanner::RobustPatternScanner::find_with_fallbacks(
+            "crashes_when_disconnected",
+            pattern_scanner::patterns::CRASH_FUNCTION_PATTERNS
+        );
 
         crashes_when_disconnected_hook = CCore::g_instance->get_hooks_manager()->register_function_hook(
             "crashes_when_disconnected",
@@ -100,10 +110,15 @@ namespace ts_extra_utilities
 
         if ( !CCore::g_instance->is_truckersmp() )
         {
-            crashes_when_disconnected_hook->hook();
+            if (crash_fn_address != 0)
+                crashes_when_disconnected_hook->hook();
         }
 
-        const auto connect_slave_address = memory::get_address_for_pattern( "40 53 48 83 ec 60 48 83 b9 ? ? ? ? 00 48 8b d9 0f 84 ? ? ? ? 48 8d 54 24 ? e8" );
+        // Use robust pattern scanner for connect_slave function
+        const auto connect_slave_address = pattern_scanner::RobustPatternScanner::find_with_fallbacks(
+            "connect_slave",
+            pattern_scanner::patterns::CONNECT_SLAVE_PATTERNS
+        );
 
         connect_slave_hook = CCore::g_instance->get_hooks_manager()->register_function_hook(
             "prism::physics_trailer_u::connect_slave",
@@ -111,11 +126,15 @@ namespace ts_extra_utilities
             reinterpret_cast< uint64_t >( &hk_connect_slave ) );
         if ( !CCore::g_instance->is_truckersmp() )
         {
-            connect_slave_hook->create();
+            if (connect_slave_address != 0)
+                connect_slave_hook->create();
         }
 
-        this->get_slave_hook_position_fn_ = reinterpret_cast< prism::physics_trailer_u_get_slave_hook_position_fn* >(
-            connect_slave_address + 29 + *reinterpret_cast< int32_t* >( connect_slave_address + 29 ) + 4 );
+        if (connect_slave_address != 0)
+        {
+            this->get_slave_hook_position_fn_ = reinterpret_cast< prism::physics_trailer_u_get_slave_hook_position_fn* >(
+                connect_slave_address + 29 + *reinterpret_cast< int32_t* >( connect_slave_address + 29 ) + 4 );
+        }
 
         this->valid_ = true;
         return this->valid_;
@@ -272,15 +291,32 @@ namespace ts_extra_utilities
 
     void CTrailerManipulation::render_trailers() const
     {
-        if (
-            CCore::g_instance->get_game_actor() == nullptr ||
-            CCore::g_instance->get_game_actor()->game_trailer_actor == nullptr )
+        auto* base_ctrl = CCore::g_instance->get_base_ctrl_instance();
+        if (base_ctrl == nullptr)
         {
-            ImGui::Text( "No trailers found" );
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Warning: Cannot find game base controller");
+            ImGui::Text("This usually means pattern scanning failed after a game update.");
+            ImGui::Text("Check the console for detailed error messages.");
             return;
         }
 
-        auto* current_trailer = CCore::g_instance->get_game_actor()->game_trailer_actor;
+        auto* game_actor = CCore::g_instance->get_game_actor();
+        if (game_actor == nullptr)
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Warning: Cannot find game actor");
+            ImGui::Text("Base controller found but game actor offset may be wrong.");
+            ImGui::Text("Base ctrl: 0x{:016x}", reinterpret_cast<uint64_t>(base_ctrl));
+            return;
+        }
+
+        if (game_actor->game_trailer_actor == nullptr)
+        {
+            ImGui::Text("No trailers attached to truck");
+            ImGui::Text("Game actor: 0x{:016x}", reinterpret_cast<uint64_t>(game_actor));
+            return;
+        }
+
+        auto* current_trailer = game_actor->game_trailer_actor;
 
         if ( steering_advance_hook == nullptr )
         {

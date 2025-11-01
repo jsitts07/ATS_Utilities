@@ -7,6 +7,8 @@
 #include "backends/imgui_impl_dx11.h"
 #include "backends/imgui_impl_win32.h"
 #include "memory/memory_utils.hpp"
+#include "memory/robust_pattern_scanner.hpp"
+#include "debug/debug_helpers.hpp"
 
 #include "managers/window_manager.hpp"
 #include "windows/trailer_manipulation.hpp"
@@ -33,18 +35,28 @@ namespace ts_extra_utilities
 
     bool CCore::init()
     {
+        // Initialize debug helpers first
+        debug::CrashHandler::initialize();
+        debug::DebugLogger::init();
+        
         MH_Initialize();
-        this->info( "Initializing {}", VERSION );
+        this->info( "Initializing {} with enhanced debugging", VERSION );
+        
+        debug::DebugLogger::info("Starting ATS mod initialization...");
+        
         truckersmp_ = GetModuleHandle( L"core_ets2mp.dll" ) != nullptr || GetModuleHandle( L"core_atsmp.dll" ) != nullptr;
 
         this->dx11_hook = new CDirectX11Hook();
         if ( !this->dx11_hook->hook_present() )
         {
+            debug::DebugLogger::error("Failed to hook DirectX11 present function");
             return false;
         }
+        
         this->di8_hook = new CDirectInput8Hook();
         if ( !this->di8_hook->hook() )
         {
+            debug::DebugLogger::error("Failed to hook DirectInput8");
             return false;
         }
 
@@ -53,17 +65,28 @@ namespace ts_extra_utilities
         if ( !trailer_manipulation->init() )
         {
             g_instance->error( "Could not initialize the trailer manipulation module" );
+            debug::DebugLogger::error("Trailer manipulation module initialization failed");
+        }
+        else
+        {
+            debug::DebugLogger::info("Trailer manipulation module initialized successfully");
         }
 
+        debug::DebugLogger::info("ATS mod initialization completed");
         return true;
     }
 
     void CCore::destroy()
     {
+        debug::DebugLogger::info("Shutting down ATS mod...");
+        
         delete this->dx11_hook;
         delete this->di8_hook;
         delete this->hooks_manager_;
         delete this->window_manager_;
+        
+        debug::CrashHandler::shutdown();
+        debug::DebugLogger::info("ATS mod shutdown completed");
     }
 
     bool CCore::on_mouse_input( LPDIDEVICEOBJECTDATA rgdod )
@@ -161,15 +184,34 @@ namespace ts_extra_utilities
 
     prism::base_ctrl_u* CCore::get_base_ctrl_instance()
     {
-        if ( this->base_ctrl_instance_ptr_address != 0 ) return *reinterpret_cast< prism::base_ctrl_u** >( this->base_ctrl_instance_ptr_address );
+        if ( this->base_ctrl_instance_ptr_address != 0 ) 
+        {
+            auto* base_ctrl = *reinterpret_cast< prism::base_ctrl_u** >( this->base_ctrl_instance_ptr_address );
+            if (base_ctrl != nullptr)
+                return base_ctrl;
+                
+            // If cached address now returns null, invalidate cache and rescan
+            this->warning("Cached base_ctrl address now returns null, rescanning...");
+            this->base_ctrl_instance_ptr_address = 0;
+        }
 
-        const auto addr = memory::get_address_for_pattern( "48 8b 05 ? ? ? ? 48 8b 4b ? 48 8b 80 ? ? ? ? 48 8b b9" );
+        const auto addr = pattern_scanner::RobustPatternScanner::find_with_fallbacks(
+            "base_ctrl_instance", 
+            pattern_scanner::patterns::BASE_CTRL_PATTERNS
+        );
 
-        if ( addr == 0 ) return nullptr;
+        if ( addr == 0 ) 
+        {
+            this->error("Could not find base_ctrl_instance - game may have updated");
+            return nullptr;
+        }
+        
         this->base_ctrl_instance_ptr_address = addr + *reinterpret_cast< int32_t* >( addr + 3 ) + 7;
         this->game_actor_offset_in_base_ctrl = *reinterpret_cast< int32_t* >( addr + 14 );
 
-        this->info( "Found base_ctrl @ +{:x}", memory::as_offset( this->base_ctrl_instance_ptr_address ) );
+        this->info( "Found base_ctrl @ +{:x}, game_actor_offset: +{:x}", 
+            memory::as_offset( this->base_ctrl_instance_ptr_address ),
+            this->game_actor_offset_in_base_ctrl );
 
         return *reinterpret_cast< prism::base_ctrl_u** >( this->base_ctrl_instance_ptr_address );
     }
