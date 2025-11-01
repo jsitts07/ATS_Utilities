@@ -153,7 +153,11 @@ namespace ts_extra_utilities
             this->set_individual_steering_fn_( current_trailer->wheel_steering_stuff, current_trailer->steering );
         }
 
-        ImGui::PushItemFlag( ImGuiItemFlags_ButtonRepeat, true );
+        // Note: PushItemFlag was removed in newer ImGui, using button repeat directly
+        ImGuiIO& io = ImGui::GetIO();
+        bool was_repeat = io.KeyRepeatDelay >= 0.0f;
+        io.KeyRepeatDelay = 0.250f;
+        io.KeyRepeatRate = 0.050f;
 
         if ( ImGui::ArrowButton( "rotate_left", ImGuiDir_Left ) )
         {
@@ -182,7 +186,10 @@ namespace ts_extra_utilities
             this->set_individual_steering_fn_( current_trailer->wheel_steering_stuff, current_trailer->steering );
         }
 
-        ImGui::PopItemFlag();
+        // Restore original repeat settings
+        if (!was_repeat) {
+            io.KeyRepeatDelay = -1.0f;
+        }
 
         ImGui::EndDisabled();
     }
@@ -337,7 +344,10 @@ namespace ts_extra_utilities
         int i = 0;
         do
         {
-            const auto trailer_name = fmt::format( "Trailer {}", i );
+            // Simple string formatting instead of fmt::format
+            char trailer_name_buf[32];
+            snprintf(trailer_name_buf, sizeof(trailer_name_buf), "Trailer %u", i);
+            const std::string trailer_name(trailer_name_buf);
             ImGui::PushID( trailer_name.c_str() );
             if ( ImGui::CollapsingHeader( trailer_name.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
             {

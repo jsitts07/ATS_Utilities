@@ -1,8 +1,8 @@
 ﻿#pragma once
 #include <dinput.h>
+#include <string>
 
 #include "scssdk_telemetry.h"
-#include "fmt/core.h"
 
 #include "graphics/dx11_hook.hpp"
 #include "input/di8_hook.hpp"
@@ -70,30 +70,35 @@ namespace ts_extra_utilities
         prism::game_actor_u* get_game_actor();
 
         // TODO: change to file only or something
-        template < class... T >
-        void debug( const char* fmt_s, T&&... args ) const
+        // Simple logging without fmt dependency - temporary for building
+        template<typename... Args>
+        void debug( const char* message, Args&&... ) const
         {
 #ifdef _DEBUG
-            scs_log_( 0, fmt::vformat( std::string( "[extra_utils] " ) + fmt_s, fmt::make_format_args( args... ) ).c_str() );
+            std::string log_msg = std::string("[extra_utils] ") + message + " [formatted logging disabled]";
+            scs_log_( 0, log_msg.c_str() );
 #endif
         }
 
-        template < class... T >
-        void info( const char* fmt_s, T&&... args ) const
+        template<typename... Args>
+        void info( const char* message, Args&&... ) const
         {
-            scs_log_( 0, fmt::vformat( std::string( "[extra_utils] " ) + fmt_s, fmt::make_format_args( args... ) ).c_str() );
+            std::string log_msg = std::string("[extra_utils] ") + message + " [formatted logging disabled]";
+            scs_log_( 0, log_msg.c_str() );
         }
 
-        template < class... T >
-        void warning( const char* fmt_s, T&&... args ) const
+        template<typename... Args>
+        void warning( const char* message, Args&&... ) const
         {
-            scs_log_( 1, fmt::vformat( std::string( "[extra_utils] " ) + fmt_s, fmt::make_format_args( args... ) ).c_str() );
+            std::string log_msg = std::string("[extra_utils] ") + message + " [formatted logging disabled]";
+            scs_log_( 1, log_msg.c_str() );
         }
 
-        template < class... T >
-        void error( const char* fmt_s, T&&... args ) const
+        template<typename... Args>
+        void error( const char* message, Args&&... ) const
         {
-            scs_log_( 2, fmt::vformat( std::string( "[extra_utils] " ) + fmt_s, fmt::make_format_args( args... ) ).c_str() );
+            std::string log_msg = std::string("[extra_utils] ") + message + " [formatted logging disabled]";
+            scs_log_( 2, log_msg.c_str() );
         }
     };
 }

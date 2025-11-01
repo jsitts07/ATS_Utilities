@@ -29,61 +29,100 @@ namespace ts_extra_utilities
 
     CCore::~CCore()
     {
-        this->destroy();
-        MH_RemoveHook( nullptr );
+        try {
+            this->destroy();
+            
+            // Safely uninitialize MinHook
+            if (MH_Uninitialize() != MH_OK) {
+                // MinHook may already be uninitialized, which is fine
+            }
+        } catch (...) {
+            // Prevent exceptions during destruction
+        }
     }
 
     bool CCore::init()
     {
-        // Initialize debug helpers first
-        debug::CrashHandler::initialize();
-        debug::DebugLogger::init();
-        
-        MH_Initialize();
-        this->info( "Initializing {} with enhanced debugging", VERSION );
-        
-        debug::DebugLogger::info("Starting ATS mod initialization...");
-        
-        truckersmp_ = GetModuleHandle( L"core_ets2mp.dll" ) != nullptr || GetModuleHandle( L"core_atsmp.dll" ) != nullptr;
+        try {
+            // Basic SCS logging first
+            this->info("TS-Extra-Utilities: Starting initialization...");
+            
+            MH_Initialize();
+            
+            this->info("TS-Extra-Utilities: MinHook initialized");
+            
+            truckersmp_ = GetModuleHandle( L"core_ets2mp.dll" ) != nullptr || GetModuleHandle( L"core_atsmp.dll" ) != nullptr;
 
-        this->dx11_hook = new CDirectX11Hook();
-        if ( !this->dx11_hook->hook_present() )
-        {
-            debug::DebugLogger::error("Failed to hook DirectX11 present function");
+            // Try to initialize DirectX11 hook
+            this->dx11_hook = new CDirectX11Hook();
+            if ( !this->dx11_hook->hook_present() )
+            {
+                this->error("TS-Extra-Utilities: Failed to hook DirectX11 present function");
+                return false;
+            }
+            
+            this->info("TS-Extra-Utilities: DirectX11 hooked successfully");
+            
+            // Try to initialize DirectInput8 hook  
+            this->di8_hook = new CDirectInput8Hook();
+            if ( !this->di8_hook->hook() )
+            {
+                this->error("TS-Extra-Utilities: Failed to hook DirectInput8");
+                return false;
+            }
+            
+            this->info("TS-Extra-Utilities: DirectInput8 hooked successfully");
+
+            // Initialize debug helpers AFTER basic hooks are working
+            debug::CrashHandler::initialize();
+            debug::DebugLogger::init();
+            
+            this->info("TS-Extra-Utilities: Debug helpers initialized");
+
+            const auto trailer_manipulation = this->window_manager_->register_window( std::make_shared< CTrailerManipulation >() );
+
+            if ( !trailer_manipulation->init() )
+            {
+                this->error("TS-Extra-Utilities: Could not initialize the trailer manipulation module");
+                // Don't return false here - let the mod continue without trailer features
+            }
+            else
+            {
+                this->info("TS-Extra-Utilities: Trailer manipulation module initialized successfully");
+            }
+
+            this->info("TS-Extra-Utilities: Initialization completed successfully");
+            return true;
+        } catch (const std::exception& e) {
+            this->error("TS-Extra-Utilities: Exception during initialization: %s", e.what());
+            return false;
+        } catch (...) {
+            this->error("TS-Extra-Utilities: Unknown exception during initialization");
             return false;
         }
-        
-        this->di8_hook = new CDirectInput8Hook();
-        if ( !this->di8_hook->hook() )
-        {
-            debug::DebugLogger::error("Failed to hook DirectInput8");
-            return false;
-        }
-
-        const auto trailer_manipulation = this->window_manager_->register_window( std::make_shared< CTrailerManipulation >() );
-
-        if ( !trailer_manipulation->init() )
-        {
-            g_instance->error( "Could not initialize the trailer manipulation module" );
-            debug::DebugLogger::error("Trailer manipulation module initialization failed");
-        }
-        else
-        {
-            debug::DebugLogger::info("Trailer manipulation module initialized successfully");
-        }
-
-        debug::DebugLogger::info("ATS mod initialization completed");
-        return true;
     }
 
     void CCore::destroy()
     {
         debug::DebugLogger::info("Shutting down ATS mod...");
         
-        delete this->dx11_hook;
-        delete this->di8_hook;
-        delete this->hooks_manager_;
-        delete this->window_manager_;
+        // Safely cleanup hooks and managers
+        if (this->dx11_hook) {
+            delete this->dx11_hook;
+            this->dx11_hook = nullptr;
+        }
+        if (this->di8_hook) {
+            delete this->di8_hook;
+            this->di8_hook = nullptr;
+        }
+        if (this->hooks_manager_) {
+            delete this->hooks_manager_;
+            this->hooks_manager_ = nullptr;
+        }
+        if (this->window_manager_) {
+            delete this->window_manager_;
+            this->window_manager_ = nullptr;
+        }
         
         debug::CrashHandler::shutdown();
         debug::DebugLogger::info("ATS mod shutdown completed");

@@ -26,7 +26,7 @@ foreach(_source IN ITEMS ${${CMAKE_PROJECT_NAME}-src})
     source_group("${_group_path}" FILES "${_source}")
 endforeach()
 
-add_library(${CMAKE_PROJECT_NAME} SHARED ${${CMAKE_PROJECT_NAME}-src} ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+add_library(${CMAKE_PROJECT_NAME} SHARED ${${CMAKE_PROJECT_NAME}-src} ${CMAKE_CURRENT_BINARY_DIR}/version.rc src/ts-extra-utilities.def)
 
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE TS_EXTRA_UTILITIES_DLL_EXPORTS UNICODE _UNICODE)
 
@@ -37,4 +37,4 @@ add_subdirectory(vendor)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE src scs_sdk_1_14/include vendor/imgui vendor/minhook/include)
 
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE fmt::fmt-header-only imgui minhook)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE imgui minhook)
