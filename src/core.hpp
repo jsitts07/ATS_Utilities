@@ -37,6 +37,11 @@ namespace ts_extra_utilities
         uint32_t game_actor_offset_in_base_ctrl = 0;
 
         bool truckersmp_ = false;
+        
+        // Trailer telemetry tracking (SDK 1.14 approach)
+        static constexpr int MAX_TRAILERS = 10; // SCS_TELEMETRY_trailers_count
+        bool trailer_connected_[MAX_TRAILERS] = {false};
+        int connected_trailer_count_ = 0;
 
     public:
         static CCore* g_instance;
@@ -68,36 +73,55 @@ namespace ts_extra_utilities
 
         prism::base_ctrl_u* get_base_ctrl_instance();
         prism::game_actor_u* get_game_actor();
+        
+        // Trailer telemetry methods (SDK 1.14 approach)
+        bool has_trailers() const { return connected_trailer_count_ > 0; }
+        int get_trailer_count() const { return connected_trailer_count_; }
+        bool is_trailer_connected(int index) const { return index >= 0 && index < MAX_TRAILERS && trailer_connected_[index]; }
+        
+        // Telemetry callback for trailer connection states
+        static SCSAPI_VOID trailer_connected_callback(const scs_string_t name, const scs_u32_t index, const scs_value_t* const value, const scs_context_t context);
+        
+        // Getter for debug information
+        uint32_t get_game_actor_offset() const { return game_actor_offset_in_base_ctrl; }
 
         // TODO: change to file only or something
         // Simple logging without fmt dependency - temporary for building
         template<typename... Args>
-        void debug( const char* message, Args&&... ) const
+        void debug( const char* message, Args&&... args ) const
         {
 #ifdef _DEBUG
-            std::string log_msg = std::string("[extra_utils] ") + message + " [formatted logging disabled]";
+            char buffer[1024];
+            snprintf(buffer, sizeof(buffer), message, args...);
+            std::string log_msg = std::string("[extra_utils] ") + buffer;
             scs_log_( 0, log_msg.c_str() );
 #endif
         }
 
         template<typename... Args>
-        void info( const char* message, Args&&... ) const
+        void info( const char* message, Args&&... args ) const
         {
-            std::string log_msg = std::string("[extra_utils] ") + message + " [formatted logging disabled]";
+            char buffer[1024];
+            snprintf(buffer, sizeof(buffer), message, args...);
+            std::string log_msg = std::string("[extra_utils] ") + buffer;
             scs_log_( 0, log_msg.c_str() );
         }
 
         template<typename... Args>
-        void warning( const char* message, Args&&... ) const
+        void warning( const char* message, Args&&... args ) const
         {
-            std::string log_msg = std::string("[extra_utils] ") + message + " [formatted logging disabled]";
+            char buffer[1024];
+            snprintf(buffer, sizeof(buffer), message, args...);
+            std::string log_msg = std::string("[extra_utils] ") + buffer;
             scs_log_( 1, log_msg.c_str() );
         }
 
         template<typename... Args>
-        void error( const char* message, Args&&... ) const
+        void error( const char* message, Args&&... args ) const
         {
-            std::string log_msg = std::string("[extra_utils] ") + message + " [formatted logging disabled]";
+            char buffer[1024];
+            snprintf(buffer, sizeof(buffer), message, args...);
+            std::string log_msg = std::string("[extra_utils] ") + buffer;
             scs_log_( 2, log_msg.c_str() );
         }
     };
